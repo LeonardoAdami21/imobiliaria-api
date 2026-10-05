@@ -4,9 +4,9 @@ Backend de gestão para imobiliárias: cadastro de imóveis, CRM, locação, ven
 
 Cada imobiliária recebe a sua própria instalação (aplicação + banco), então não há dados de clientes diferentes no mesmo banco.
 
-- **Stack:** Node.js 22, TypeScript, Express 5, Prisma ORM 7, PostgreSQL 16, Zod, Vitest, Docker
+- **Stack:** Node.js 22, TypeScript, NestJS 11, Prisma ORM 7, PostgreSQL 16, Zod (nestjs-zod), Vitest, Docker
 - **Arquitetura:** Clean Architecture + DDD, organizada como monólito modular
-- **Documentação da API:** Swagger em `/docs` (gerado das mesmas definições que validam as requisições)
+- **Documentação da API:** Swagger em `/docs` (JSON em `/docs.json`), gerado dos mesmos DTOs Zod que validam as requisições
 
 ## Como rodar
 
@@ -17,7 +17,7 @@ cp .env.example .env        # edite as senhas e o JWT_SECRET
 docker compose up -d --build
 ```
 
-O compose sobe o PostgreSQL, aplica as migrações e só então inicia a API em `http://localhost:3333`.
+O compose sobe o PostgreSQL, aplica as migrações e só então inicia a API em `http://localhost:7000` (a porta vem de `PORT` no `.env`).
 No primeiro start, se o banco não tiver nenhum usuário, o administrador definido em `ADMIN_EMAIL` / `ADMIN_PASSWORD` é criado.
 
 Para instalar para outra imobiliária, repita em outra pasta ou servidor com outro `.env` (outro `AGENCY_NAME`, senhas, `PORT`) e, se for na mesma máquina, outro nome de projeto: `docker compose -p imobiliaria-cliente2 up -d --build`.
@@ -26,25 +26,27 @@ Para instalar para outra imobiliária, repita em outra pasta ou servidor com out
 
 ```bash
 cp .env.example .env
-npm install
+yarn install
 docker compose up -d db     # só o banco
-npm run db:deploy           # aplica as migrações
-npm run db:seed             # opcional: dados de demonstração (admin@demo.com.br / demo12345)
-npm run dev                 # API com reload em http://localhost:3333
+yarn db:deploy              # aplica as migrações
+yarn db:seed                # opcional: dados de demonstração (admin@demo.com.br / demo12345)
+yarn dev                    # API com reload em http://localhost:7000
 ```
 
 ### Scripts
 
 | Comando | O que faz |
 |---|---|
-| `npm run dev` | Sobe a API com reload automático |
-| `npm run build` / `npm start` | Gera `dist/server.js` e roda a versão compilada |
-| `npm run typecheck` | Checagem de tipos |
-| `npm test` | Testes unitários (sem banco) |
-| `npm run test:e2e` | Testes de ponta a ponta contra o PostgreSQL (usa o banco `<nome>_test`, criado e zerado automaticamente) |
-| `npm run db:migrate` | Cria e aplica uma nova migração depois de alterar `prisma/schema.prisma` |
-| `npm run db:deploy` | Aplica as migrações pendentes |
-| `npm run db:studio` | Abre o Prisma Studio |
+| `yarn dev` | Compila em modo watch e reinicia a API a cada alteração |
+| `yarn build` / `yarn start` | Gera `dist/main.js` e roda a versão compilada |
+| `yarn typecheck` | Checagem de tipos |
+| `yarn test` | Testes unitários e da camada HTTP (sem banco) |
+| `yarn test:e2e` | Testes de ponta a ponta contra o PostgreSQL (usa o banco `<nome>_test`, criado e zerado automaticamente) |
+| `yarn db:migrate` | Cria e aplica uma nova migração depois de alterar `prisma/schema.prisma` |
+| `yarn db:deploy` | Aplica as migrações pendentes |
+| `yarn db:studio` | Abre o Prisma Studio |
+
+O build usa o tsup com SWC (e não o `nest build`): o SWC emite os metadados de tipo dos decorators, que o NestJS usa para validar os DTOs e montar o Swagger, e o tsup gera um único `dist/main.js` em ESM. Os testes rodam no Vitest com o mesmo SWC (`unplugin-swc`).
 
 ## Arquitetura
 
@@ -60,9 +62,22 @@ infra  ──►  application  ──►  domain
 |---|---|---|
 | `domain` | Entidades, agregados, objetos de valor, regras de negócio e as **interfaces** dos repositórios | Só `shared/domain` |
 | `application` | Casos de uso (um por operação) e as portas de que precisam (hash de senha, token, relógio, unidade de trabalho) | `domain` e os **contratos** de outros módulos |
-| `infra` | Repositórios Prisma, rotas HTTP, criptografia, repositórios em memória para teste | Tudo acima, mais bibliotecas |
+| `infra` | Controllers e DTOs do NestJS, repositórios Prisma, criptografia, repositórios em memória para teste | Tudo acima, mais bibliotecas |
 
-O domínio não conhece Prisma, Express nem HTTP. Trocar o banco ou o framework web significa reescrever a camada `infra`; nenhuma regra de negócio muda.
+O domínio e os casos de uso não conhecem Prisma, NestJS nem HTTP: não têm decorators. Trocar o banco ou o framework web significa reescrever a camada `infra` e os `*.module.ts`; nenhuma regra de negócio muda.
+
+### Como o NestJS está ligado
+
+- **Um `*.module.ts` por módulo de negócio**, importados pelo `AppModule`. O CRM tem dois: `PeopleModule` (pessoas) e `CrmModule` (leads e visitas). Imóveis, locação e vendas dependem de pessoas, e leads dependem de imóveis; num módulo só, isso seria um ciclo.
+- **Injeção por tokens.** Cada interface (repositório, `UserDirectory`, `Clock`…) tem um token em `<módulo>.tokens.ts`. Os casos de uso são registrados com o helper `provide()`, que diz ao Nest qual token vai em cada parâmetro do construtor:
+  ```ts
+  provide(CreateLead, [LEAD_REPOSITORY, USER_DIRECTORY, PROPERTY_REGISTRY])
+  provide(PrismaLeadRepository, [PrismaContext], LEAD_REPOSITORY)
+  ```
+  Os controllers recebem os casos de uso com `@Inject(CasoDeUso)`.
+- **Validação:** DTOs criados com `createZodDto()` em `infra/dto.ts`. O `ZodValidationPipe` global valida `@Body()`, `@Query()` e `@Param()`, e o `@nestjs/swagger` documenta a partir deles.
+- **Autenticação:** o `AuthGuard` global (módulo de identidade) exige token Bearer em toda rota, salvo as marcadas com `@Public()`. Ele confere o papel pedido por `@Roles(...)` e coloca o usuário em `@CurrentUser()`.
+- **Erros:** o `AppExceptionFilter` global traduz os erros de domínio (`AppError`), de validação (Zod) e do Prisma para `{ "error": { "code", "message" } }`.
 
 ### Estrutura de pastas
 
@@ -75,23 +90,29 @@ src/
   shared/
     domain/                Entity, AggregateRoot, Money, Document (CPF/CNPJ), Email, Address, datas, erros
     application/           UseCase, Repository, UnitOfWork, Clock, paginação
-    infra/                 Prisma (conexão + transação), Express (rotas, erros, OpenAPI), relógio
-    testing/               repositório em memória e relógio fixo
+    infra/                 Prisma (conexão + transação), HTTP (decorators de auth, filtro de erros, schemas Zod), relógio
+    testing/               AppModule em memória, repositório em memória e relógio fixo
+    core.module.ts         módulo global: PrismaClient, unidade de trabalho, relógio
+    tokens.ts              tokens de injeção compartilhados (CLOCK, UNIT_OF_WORK)
   modules/
     identity/              usuários, login, papéis
     crm/                   pessoas, leads, visitas
     properties/            imóveis e fotos
     rentals/               contratos de locação, cobranças, repasses
     sales/                 propostas, vendas, comissões
+      <módulo>.module.ts   módulo NestJS: liga casos de uso, repositórios e controllers
+      <módulo>.tokens.ts   tokens de injeção do módulo
       contracts.ts         o que o módulo expõe para os outros
       domain/              agregados e interfaces de repositório
       application/         casos de uso
-      infra/               Prisma, rotas, repositórios em memória
-  main/
-    container.ts           raiz de composição: liga casos de uso às dependências
-    app.ts                 versão de produção (Prisma + Express)
-    server.ts              inicialização
-    env.ts                 validação do .env
+      infra/               controllers, DTOs (Zod), repositórios Prisma e em memória
+  config/
+    env.ts                 validação do .env (token ENV)
+    env.module.ts          módulo global da configuração
+  app.module.ts            módulo raiz
+  app.controller.ts        GET /health
+  app.setup.ts             helmet, CORS, limite do corpo, Swagger
+  main.ts                  inicialização
 test/e2e/                  testes de ponta a ponta
 ```
 
@@ -303,8 +324,8 @@ Casos de uso que gravam mais de um agregado usam a porta `UnitOfWork`. A impleme
 
 ## Testes
 
-- **Unitários** (`npm test`): regras de domínio e casos de uso com repositórios em memória. Rodam em cerca de 2 segundos, sem banco.
-- **Ponta a ponta** (`npm run test:e2e`): requisições HTTP reais contra a aplicação com Prisma e PostgreSQL, cobrindo os ciclos completos de locação e venda, permissões e validação. O banco de teste é recriado a partir dos arquivos de migração a cada execução.
+- **Unitários** (`yarn test`): regras de domínio e casos de uso, resolvidos do próprio `AppModule` com os repositórios trocados por versões em memória (`overrideProvider`). O `app.http.spec.ts` sobe a camada HTTP do Nest do mesmo jeito: guard, papéis, validação, erros, códigos de status e Swagger. Rodam em poucos segundos, sem banco.
+- **Ponta a ponta** (`yarn test:e2e`): requisições HTTP reais contra a aplicação com Prisma e PostgreSQL, cobrindo os ciclos completos de locação e venda, permissões e validação. O banco de teste é recriado a partir dos arquivos de migração a cada execução.
 
 ## Glossário
 

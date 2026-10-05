@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { buildInMemoryApp, type InMemoryApp } from '@/main/testing';
+import { buildInMemoryApp, type InMemoryApp } from '@/shared/testing/in-memory-app';
 import { BusinessRuleError, ConflictError, ForbiddenError, UnauthorizedError, ValidationError } from '@/shared/domain/errors';
 
 describe('Identidade', () => {
   let app: InMemoryApp;
   const admin = { name: 'Ana Admin', email: 'ana@imob.com.br', password: 'senha-forte-1', role: 'ADMIN' as const };
 
-  beforeEach(() => {
-    app = buildInMemoryApp();
+  beforeEach(async () => {
+    app = await buildInMemoryApp();
   });
 
   it('cadastra usuário guardando só o hash da senha', async () => {
@@ -45,12 +45,12 @@ describe('Identidade', () => {
     const root = await app.identity.registerUser.execute(admin);
     const other = await app.identity.registerUser.execute({ ...admin, email: 'bia@imob.com.br', role: 'FINANCE' });
     const { token } = await app.identity.authenticate.execute({ email: other.email, password: admin.password });
-    expect(await app.container.authenticate(token)).toEqual({ id: other.id, role: 'FINANCE' });
+    expect(await app.identity.verifyAccessToken.execute({ token })).toEqual({ id: other.id, role: 'FINANCE' });
 
     await app.identity.updateUser.execute({ id: other.id, actorId: root.id, active: false });
 
     await expect(app.identity.authenticate.execute({ email: other.email, password: admin.password })).rejects.toThrow(UnauthorizedError);
-    expect(await app.container.authenticate(token)).toBeNull();
+    expect(await app.identity.verifyAccessToken.execute({ token })).toBeNull();
   });
 
   it('administrador não pode desativar a si mesmo', async () => {

@@ -1,14 +1,16 @@
 import { fileURLToPath } from 'node:url';
+import swc from 'unplugin-swc';
 import { defineConfig } from 'vitest/config';
 
-const alias = { '@': fileURLToPath(new URL('./src', import.meta.url)) };
-
 export default defineConfig({
-  resolve: { alias },
+  // SWC no lugar do esbuild: o NestJS precisa dos metadados de tipo dos decorators.
+  plugins: [swc.vite({ module: { type: 'es6' } })],
+  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   test: {
+    setupFiles: ['reflect-metadata'],
     projects: [
       {
-        resolve: { alias },
+        extends: true,
         test: {
           name: 'unit',
           include: ['src/**/*.spec.ts'],
@@ -16,7 +18,7 @@ export default defineConfig({
         },
       },
       {
-        resolve: { alias },
+        extends: true,
         test: {
           name: 'e2e',
           include: ['test/e2e/**/*.e2e-spec.ts'],
