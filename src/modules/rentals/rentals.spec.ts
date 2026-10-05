@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { buildInMemoryApp, cpf, type InMemoryApp, seedBasics } from '@/main/testing';
+import { buildInMemoryApp, cpf, type InMemoryApp, seedBasics } from '@/shared/testing/in-memory-app';
 import { dateOnly } from '@/shared/domain/dates';
 import { BusinessRuleError } from '@/shared/domain/errors';
 
@@ -27,7 +27,7 @@ describe('Locação', () => {
     app.rentals.searchCharges.execute({ page: 1, perPage: 100, leaseId, ...filters }).then((page) => page.items);
 
   beforeEach(async () => {
-    app = buildInMemoryApp('2026-03-10T12:00:00Z');
+    app = await buildInMemoryApp('2026-03-10T12:00:00Z');
     seed = await seedBasics(app);
   });
 

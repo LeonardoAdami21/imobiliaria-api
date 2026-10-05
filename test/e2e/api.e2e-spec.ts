@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cpf } from '@/main/testing';
+import { cpf } from '@/shared/testing/in-memory-app';
 import { Person } from '@/modules/crm/domain/person';
 import { PrismaPersonRepository } from '@/modules/crm/infra/prisma-repositories';
 import { PrismaContext } from '@/shared/infra/database/prisma';
@@ -25,7 +25,7 @@ describe('API: autenticação, permissões e cadastros', () => {
     expect(health.body.status).toBe('ok');
 
     const docs = await request(api.http).get('/docs.json');
-    expect(docs.body.openapi).toBe('3.1.0');
+    expect(docs.body.openapi).toBe('3.0.0');
     expect(docs.body.paths['/leases'].post.requestBody).toBeDefined();
     expect(docs.body.paths['/properties/{id}'].get.parameters[0]).toMatchObject({ name: 'id', in: 'path', required: true });
   });

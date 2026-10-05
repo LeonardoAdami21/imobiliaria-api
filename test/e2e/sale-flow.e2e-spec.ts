@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cpf } from '@/main/testing';
+import { cpf } from '@/shared/testing/in-memory-app';
 import { seedViaApi, startTestApi, type TestApi } from './support';
 
 describe('API: ciclo completo de uma venda', () => {

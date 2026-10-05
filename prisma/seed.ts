@@ -1,24 +1,28 @@
 /**
  * Dados de demonstração para desenvolvimento do front-end.
- * Rode com: npm run db:seed
+ * Rode com: yarn db:seed
  *
  * Tudo é criado pelos mesmos casos de uso da API, então os dados
  * respeitam as regras de negócio (cobranças geradas, imóvel alugado etc.).
  */
 import 'dotenv/config';
-import { createApplication } from '../src/main/app';
-import { loadEnv } from '../src/main/env';
-import { cpf } from '../src/main/testing';
+import 'reflect-metadata';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from '../src/app.module';
+import { loadEnv } from '../src/config/env';
+import { PrismaClient } from '../src/generated/prisma/client';
+import { buildUseCaseGroups, cpf } from '../src/shared/testing/in-memory-app';
 import { addMonths, startOfMonth } from '../src/shared/domain/dates';
-import { createPrismaClient } from '../src/shared/infra/database/prisma';
 import { SystemClock } from '../src/shared/infra/system-clock';
 
 const PASSWORD = 'demo12345';
 
 async function main(): Promise<void> {
   const env = loadEnv();
-  const prisma = createPrismaClient(env.DATABASE_URL);
-  const { identity, crm, properties, rentals, sales } = createApplication(env, prisma).container.useCases;
+  // Contexto do Nest sem servidor HTTP: os mesmos casos de uso da API, ligados ao banco do .env.
+  const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error'] });
+  const prisma = app.get(PrismaClient);
+  const { identity, crm, properties, rentals, sales } = buildUseCaseGroups(app);
   const today = new SystemClock(env.BUSINESS_TIMEZONE).today();
 
   try {
@@ -142,7 +146,7 @@ async function main(): Promise<void> {
 
     console.log(`Seed concluído. Entre com admin@demo.com.br / ${PASSWORD} (mesma senha para os demais usuários).`);
   } finally {
-    await prisma.$disconnect();
+    await app.close();
   }
 }
 

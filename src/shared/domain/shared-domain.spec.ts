@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cpf } from '@/main/testing';
+import { cpf } from '@/shared/testing/in-memory-app';
 import { Address } from './address';
 import { addMonths, dateOnly, daysBetween, formatDate, withDay } from './dates';
 import { Document } from './document';

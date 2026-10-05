@@ -27,6 +27,11 @@ export class PrismaContext implements UnitOfWork {
     if (this.storage.getStore()) return work(); // já dentro de uma transação
     return this.prisma.$transaction((tx) => this.storage.run(tx, work), { timeout: 20_000 });
   }
+
+  /** Chamado pelo NestJS no encerramento (app.close() / SIGTERM): fecha as conexões com o banco. */
+  async onModuleDestroy(): Promise<void> {
+    await this.prisma.$disconnect();
+  }
 }
 
 // ── Conversões entre os tipos do banco e os do domínio ──────────────────

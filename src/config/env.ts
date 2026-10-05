@@ -26,3 +26,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
   return result.data;
 }
+
+/** Token de injeção da configuração já validada. */
+export const ENV = Symbol('ENV');
