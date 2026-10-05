@@ -1,0 +1,407 @@
+// Esquema do banco de dados (PostgreSQL).
+// Valores em dinheiro são DECIMAL(14,2) no banco e centavos (inteiro) no domínio.
+// Datas de calendário (vencimento, início de contrato) usam o tipo DATE.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Identidade ─────────────────────────────
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  BROKER
+  FINANCE
+}
+
+model User {
+  id           String   @id @db.Uuid
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole
+  creci        String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @map("updated_at") @db.Timestamptz(3)
+
+  listedProperties Property[]
+  leads            Lead[]
+  visits           Visit[]
+  proposals        Proposal[]
+  commissions      Commission[]
+
+  @@map("users")
+}
+
+// ───────────────────────────────── CRM ────────────────────────────────
+
+enum PersonType {
+  INDIVIDUAL
+  COMPANY
+}
+
+model Person {
+  id        String     @id @db.Uuid
+  type      PersonType
+  name      String
+  document  String     @unique
+  email     String?
+  phone     String?
+  notes     String?
+  createdAt DateTime   @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime   @map("updated_at") @db.Timestamptz(3)
+
+  ownedProperties   Property[]
+  leads             Lead[]
+  leasesAsTenant    Lease[]    @relation("LeaseTenant")
+  leasesAsOwner     Lease[]    @relation("LeaseOwner")
+  leasesAsGuarantor Lease[]    @relation("LeaseGuarantor")
+  proposals         Proposal[]
+  purchases         Sale[]     @relation("SaleBuyer")
+  salesAsSeller     Sale[]     @relation("SaleSeller")
+
+  @@index([name])
+  @@map("people")
+}
+
+enum LeadStatus {
+  NEW
+  IN_SERVICE
+  VISIT_SCHEDULED
+  PROPOSAL
+  WON
+  LOST
+}
+
+enum LeadInterest {
+  BUY
+  RENT
+}
+
+enum LeadSource {
+  WEBSITE
+  PORTAL
+  REFERRAL
+  WALK_IN
+  SOCIAL_MEDIA
+  PHONE
+  OTHER
+}
+
+model Lead {
+  id         String       @id @db.Uuid
+  name       String
+  email      String?
+  phone      String?
+  interest   LeadInterest
+  source     LeadSource
+  status     LeadStatus
+  propertyId String?      @map("property_id") @db.Uuid
+  brokerId   String?      @map("broker_id") @db.Uuid
+  personId   String?      @map("person_id") @db.Uuid
+  notes      String?
+  lostReason String?      @map("lost_reason")
+  createdAt  DateTime     @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime     @map("updated_at") @db.Timestamptz(3)
+
+  property Property? @relation(fields: [propertyId], references: [id])
+  broker   User?     @relation(fields: [brokerId], references: [id])
+  person   Person?   @relation(fields: [personId], references: [id])
+  visits   Visit[]
+
+  @@index([status])
+  @@index([brokerId])
+  @@map("leads")
+}
+
+enum VisitStatus {
+  SCHEDULED
+  DONE
+  CANCELED
+  NO_SHOW
+}
+
+model Visit {
+  id          String      @id @db.Uuid
+  leadId      String      @map("lead_id") @db.Uuid
+  propertyId  String      @map("property_id") @db.Uuid
+  brokerId    String      @map("broker_id") @db.Uuid
+  scheduledAt DateTime    @map("scheduled_at") @db.Timestamptz(3)
+  status      VisitStatus
+  feedback    String?
+  createdAt   DateTime    @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime    @map("updated_at") @db.Timestamptz(3)
+
+  lead     Lead     @relation(fields: [leadId], references: [id])
+  property Property @relation(fields: [propertyId], references: [id])
+  broker   User     @relation(fields: [brokerId], references: [id])
+
+  @@index([brokerId, scheduledAt])
+  @@index([propertyId])
+  @@map("visits")
+}
+
+// ─────────────────────────────── Imóveis ──────────────────────────────
+
+enum PropertyType {
+  HOUSE
+  APARTMENT
+  LAND
+  COMMERCIAL
+  RURAL
+  OTHER
+}
+
+enum PropertyPurpose {
+  SALE
+  RENT
+  BOTH
+}
+
+enum PropertyStatus {
+  AVAILABLE
+  RESERVED
+  RENTED
+  SOLD
+  INACTIVE
+}
+
+model Property {
+  id              String          @id @db.Uuid
+  code            Int             @unique @default(autoincrement())
+  title           String
+  description     String?
+  type            PropertyType
+  purpose         PropertyPurpose
+  status          PropertyStatus
+  ownerId         String          @map("owner_id") @db.Uuid
+  listingBrokerId String?         @map("listing_broker_id") @db.Uuid
+  salePrice       Decimal?        @map("sale_price") @db.Decimal(14, 2)
+  rentPrice       Decimal?        @map("rent_price") @db.Decimal(14, 2)
+  condoFee        Decimal?        @map("condo_fee") @db.Decimal(14, 2)
+  propertyTax     Decimal?        @map("property_tax") @db.Decimal(14, 2)
+  bedrooms        Int             @default(0)
+  bathrooms       Int             @default(0)
+  parkingSpaces   Int             @default(0) @map("parking_spaces")
+  areaM2          Decimal?        @map("area_m2") @db.Decimal(10, 2)
+  street          String
+  number          String
+  complement      String?
+  district        String
+  city            String
+  state           String          @db.Char(2)
+  zipCode         String          @map("zip_code") @db.Char(8)
+  createdAt       DateTime        @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime        @map("updated_at") @db.Timestamptz(3)
+
+  owner         Person          @relation(fields: [ownerId], references: [id])
+  listingBroker User?           @relation(fields: [listingBrokerId], references: [id])
+  photos        PropertyPhoto[]
+  leads         Lead[]
+  visits        Visit[]
+  leases        Lease[]
+  proposals     Proposal[]
+  sale          Sale?
+
+  @@index([status, purpose])
+  @@index([city, district])
+  @@index([ownerId])
+  @@map("properties")
+}
+
+model PropertyPhoto {
+  id         String  @id @db.Uuid
+  propertyId String  @map("property_id") @db.Uuid
+  url        String
+  caption    String?
+  position   Int
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@map("property_photos")
+}
+
+// ─────────────────────────────── Locação ──────────────────────────────
+
+enum LeaseStatus {
+  ACTIVE
+  ENDED
+  TERMINATED
+}
+
+enum GuaranteeType {
+  NONE
+  GUARANTOR
+  DEPOSIT
+  SURETY_INSURANCE
+}
+
+enum AdjustmentIndex {
+  IGPM
+  IPCA
+  INPC
+  FIXED
+}
+
+model Lease {
+  id                     String          @id @db.Uuid
+  propertyId             String          @map("property_id") @db.Uuid
+  tenantId               String          @map("tenant_id") @db.Uuid
+  ownerId                String          @map("owner_id") @db.Uuid
+  guarantorId            String?         @map("guarantor_id") @db.Uuid
+  startDate              DateTime        @map("start_date") @db.Date
+  endDate                DateTime        @map("end_date") @db.Date
+  durationMonths         Int             @map("duration_months")
+  rentAmount             Decimal         @map("rent_amount") @db.Decimal(14, 2)
+  dueDay                 Int             @map("due_day")
+  adminFeePercent        Decimal         @map("admin_fee_percent") @db.Decimal(5, 2)
+  lateFeePercent         Decimal         @map("late_fee_percent") @db.Decimal(5, 2)
+  monthlyInterestPercent Decimal         @map("monthly_interest_percent") @db.Decimal(5, 2)
+  guaranteeType          GuaranteeType   @map("guarantee_type")
+  depositAmount          Decimal?        @map("deposit_amount") @db.Decimal(14, 2)
+  adjustmentIndex        AdjustmentIndex @map("adjustment_index")
+  lastAdjustmentAt       DateTime?       @map("last_adjustment_at") @db.Date
+  status                 LeaseStatus
+  terminatedAt           DateTime?       @map("terminated_at") @db.Date
+  terminationReason      String?         @map("termination_reason")
+  createdAt              DateTime        @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime        @map("updated_at") @db.Timestamptz(3)
+
+  property  Property     @relation(fields: [propertyId], references: [id])
+  tenant    Person       @relation("LeaseTenant", fields: [tenantId], references: [id])
+  owner     Person       @relation("LeaseOwner", fields: [ownerId], references: [id])
+  guarantor Person?      @relation("LeaseGuarantor", fields: [guarantorId], references: [id])
+  charges   RentCharge[]
+
+  @@index([propertyId])
+  @@index([tenantId])
+  @@index([status])
+  @@map("leases")
+}
+
+enum ChargeStatus {
+  PENDING
+  PAID
+  CANCELED
+}
+
+enum TransferStatus {
+  PENDING
+  DONE
+}
+
+model RentCharge {
+  id                  String          @id @db.Uuid
+  leaseId             String          @map("lease_id") @db.Uuid
+  referenceMonth      DateTime        @map("reference_month") @db.Date
+  dueDate             DateTime        @map("due_date") @db.Date
+  amount              Decimal         @db.Decimal(14, 2)
+  status              ChargeStatus
+  paidAt              DateTime?       @map("paid_at") @db.Date
+  lateFeeAmount       Decimal?        @map("late_fee_amount") @db.Decimal(14, 2)
+  interestAmount      Decimal?        @map("interest_amount") @db.Decimal(14, 2)
+  paidAmount          Decimal?        @map("paid_amount") @db.Decimal(14, 2)
+  adminFeeAmount      Decimal?        @map("admin_fee_amount") @db.Decimal(14, 2)
+  ownerTransferAmount Decimal?        @map("owner_transfer_amount") @db.Decimal(14, 2)
+  transferStatus      TransferStatus? @map("transfer_status")
+  transferredAt       DateTime?       @map("transferred_at") @db.Date
+  createdAt           DateTime        @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime        @map("updated_at") @db.Timestamptz(3)
+
+  lease Lease @relation(fields: [leaseId], references: [id])
+
+  @@unique([leaseId, referenceMonth])
+  @@index([status, dueDate])
+  @@map("rent_charges")
+}
+
+// ──────────────────────────────── Vendas ──────────────────────────────
+
+enum ProposalStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELED
+}
+
+model Proposal {
+  id              String         @id @db.Uuid
+  propertyId      String         @map("property_id") @db.Uuid
+  buyerId         String         @map("buyer_id") @db.Uuid
+  brokerId        String         @map("broker_id") @db.Uuid
+  amount          Decimal        @db.Decimal(14, 2)
+  paymentTerms    String?        @map("payment_terms")
+  validUntil      DateTime?      @map("valid_until") @db.Date
+  status          ProposalStatus
+  decidedAt       DateTime?      @map("decided_at") @db.Timestamptz(3)
+  rejectionReason String?        @map("rejection_reason")
+  createdAt       DateTime       @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime       @map("updated_at") @db.Timestamptz(3)
+
+  property Property @relation(fields: [propertyId], references: [id])
+  buyer    Person   @relation(fields: [buyerId], references: [id])
+  broker   User     @relation(fields: [brokerId], references: [id])
+  sale     Sale?
+
+  @@index([propertyId])
+  @@index([status])
+  @@map("proposals")
+}
+
+model Sale {
+  id                String   @id @db.Uuid
+  proposalId        String   @unique @map("proposal_id") @db.Uuid
+  propertyId        String   @unique @map("property_id") @db.Uuid
+  buyerId           String   @map("buyer_id") @db.Uuid
+  sellerId          String   @map("seller_id") @db.Uuid
+  amount            Decimal  @db.Decimal(14, 2)
+  commissionPercent Decimal  @map("commission_percent") @db.Decimal(5, 2)
+  commissionAmount  Decimal  @map("commission_amount") @db.Decimal(14, 2)
+  closedAt          DateTime @map("closed_at") @db.Date
+  createdAt         DateTime @map("created_at") @db.Timestamptz(3)
+
+  proposal    Proposal     @relation(fields: [proposalId], references: [id])
+  property    Property     @relation(fields: [propertyId], references: [id])
+  buyer       Person       @relation("SaleBuyer", fields: [buyerId], references: [id])
+  seller      Person       @relation("SaleSeller", fields: [sellerId], references: [id])
+  commissions Commission[]
+
+  @@map("sales")
+}
+
+enum CommissionRole {
+  LISTING_BROKER
+  SELLING_BROKER
+  AGENCY
+}
+
+enum CommissionStatus {
+  PENDING
+  PAID
+}
+
+model Commission {
+  id           String           @id @db.Uuid
+  saleId       String           @map("sale_id") @db.Uuid
+  role         CommissionRole
+  brokerId     String?          @map("broker_id") @db.Uuid
+  sharePercent Decimal          @map("share_percent") @db.Decimal(5, 2)
+  amount       Decimal          @db.Decimal(14, 2)
+  status       CommissionStatus
+  paidAt       DateTime?        @map("paid_at") @db.Date
+
+  sale   Sale  @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  broker User? @relation(fields: [brokerId], references: [id])
+
+  @@index([saleId])
+  @@index([brokerId, status])
+  @@map("commissions")
+}
