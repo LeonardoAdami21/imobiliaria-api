@@ -9,6 +9,25 @@ import type { Env } from './config/env';
 // Mensagens de validação do Zod em português.
 z.config(z.locales.pt());
 
+/**
+ * Exemplos por formato. Sem eles o Swagger UI gera um texto aleatório que casa com a regex
+ * do Zod (um "e-mail" de 4 mil caracteres, datas no ano 8396).
+ */
+const EXAMPLE_BY_FORMAT: Record<string, string> = {
+  email: 'nome@imobiliaria.com.br',
+  uuid: '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+  date: '2026-03-10',
+  'date-time': '2026-03-10T14:00:00-03:00',
+};
+
+function addFormatExamples(node: unknown): void {
+  if (!node || typeof node !== 'object') return;
+  const schema = node as Record<string, unknown>;
+  const example = typeof schema.format === 'string' ? EXAMPLE_BY_FORMAT[schema.format] : undefined;
+  if (example && schema.example === undefined) schema.example = example;
+  for (const child of Object.values(schema)) addFormatExamples(child);
+}
+
 /** Middlewares, CORS e documentação. Compartilhado por main.ts e pelos testes de ponta a ponta. */
 export function configureApp(app: NestExpressApplication, env: Pick<Env, 'AGENCY_NAME' | 'CORS_ORIGIN'>): void {
   const title = `API ${env.AGENCY_NAME}`;
@@ -34,5 +53,6 @@ export function configureApp(app: NestExpressApplication, env: Pick<Env, 'AGENCY
     .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' })
     .build();
   const document = cleanupOpenApiDoc(SwaggerModule.createDocument(app, config));
+  addFormatExamples(document);
   SwaggerModule.setup('docs', app, document, { jsonDocumentUrl: 'docs.json', customSiteTitle: title });
 }
