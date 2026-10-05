@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { buildInMemoryApp, cpf, type InMemoryApp, seedBasics } from '@/main/testing';
+import { buildInMemoryApp, cpf, type InMemoryApp, seedBasics } from '@/shared/testing/in-memory-app';
 import { dateOnly } from '@/shared/domain/dates';
 import { BusinessRuleError } from '@/shared/domain/errors';
 import { Money } from '@/shared/domain/money';
@@ -21,7 +21,7 @@ describe('Vendas', () => {
   const propertyStatus = () => app.properties.getProperty.execute({ id: seed.property.id }).then((property) => property.status);
 
   beforeEach(async () => {
-    app = buildInMemoryApp('2026-03-10T12:00:00Z');
+    app = await buildInMemoryApp('2026-03-10T12:00:00Z');
     seed = await seedBasics(app);
   });
 

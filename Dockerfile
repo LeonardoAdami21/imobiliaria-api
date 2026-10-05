@@ -10,19 +10,19 @@ RUN apt-get update \
 # ── Builder: instala tudo, gera o Prisma Client e compila ────────────────
 # Também é a imagem usada pelo serviço "migrate" do docker compose.
 FROM base AS builder
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile
 COPY . .
-RUN npm run build
+RUN yarn build
 
 # ── Runtime: só as dependências de produção e o código compilado ─────────
 FROM base AS runtime
 ENV NODE_ENV=production
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile --production && yarn cache clean
 COPY --from=builder /app/dist ./dist
 USER node
 EXPOSE 7000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://localhost:' + (process.env.PORT || 3333) + '/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
-CMD ["node", "dist/server.js"]
+CMD ["node", "--enable-source-maps", "dist/main.js"]

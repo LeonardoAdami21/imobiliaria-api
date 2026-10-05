@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { buildInMemoryApp, type InMemoryApp, seedBasics } from '@/main/testing';
+import { buildInMemoryApp, type InMemoryApp, seedBasics } from '@/shared/testing/in-memory-app';
 import { BusinessRuleError, NotFoundError, ValidationError } from '@/shared/domain/errors';
 
 describe('Imóveis', () => {
@@ -18,7 +18,7 @@ describe('Imóveis', () => {
   });
 
   beforeEach(async () => {
-    app = buildInMemoryApp();
+    app = await buildInMemoryApp();
     seed = await seedBasics(app);
   });
 

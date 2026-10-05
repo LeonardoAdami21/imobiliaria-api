@@ -1,12 +1,16 @@
 import 'dotenv/config';
-import type { Express } from 'express';
+import type { Server } from 'node:http';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import type { PrismaClient } from '@/generated/prisma/client';
-import { createApplication } from '@/main/app';
-import type { Env } from '@/main/env';
-import { cpf } from '@/main/testing';
-import { createPrismaClient } from '@/shared/infra/database/prisma';
+import { AppModule } from '@/app.module';
+import { configureApp } from '@/app.setup';
+import { ENV, type Env } from '@/config/env';
+import { PrismaClient } from '@/generated/prisma/client';
+import { EnsureAdminUser } from '@/modules/identity/application/user-use-cases';
 import { FixedClock } from '@/shared/testing/in-memory-repository';
+import { cpf, TEST_ENV } from '@/shared/testing/in-memory-app';
+import { CLOCK } from '@/shared/tokens';
 
 /**
  * Banco usado pelos testes de ponta a ponta: DATABASE_URL_TEST, se definida,
@@ -23,7 +27,7 @@ export function testDatabaseUrl(): string {
 const ADMIN = { email: 'admin@teste.com.br', password: 'senha-de-teste-1' };
 
 export interface TestApi {
-  http: Express;
+  http: Server;
   prisma: PrismaClient;
   clock: FixedClock;
   adminToken: string;
@@ -35,29 +39,28 @@ export interface TestApi {
   close(): Promise<void>;
 }
 
-/** Sobe a aplicação real (Express + Prisma + PostgreSQL) com o banco limpo e um administrador criado. */
+/** Sobe a aplicação real (NestJS + Prisma + PostgreSQL) com o banco limpo e um administrador criado. */
 export async function startTestApi(now = '2026-03-10T12:00:00Z'): Promise<TestApi> {
-  const env: Env = {
-    NODE_ENV: 'test',
-    PORT: 0,
-    AGENCY_NAME: 'Imobiliária de Teste',
-    CORS_ORIGIN: '*',
-    BUSINESS_TIMEZONE: 'America/Sao_Paulo',
-    DATABASE_URL: testDatabaseUrl(),
-    JWT_SECRET: 'segredo-de-teste-com-mais-de-32-caracteres',
-    JWT_EXPIRES_IN: '1h',
-    ADMIN_NAME: 'Admin de Teste',
-  };
-  const prisma = createPrismaClient(env.DATABASE_URL);
+  const env: Env = { ...TEST_ENV, DATABASE_URL: testDatabaseUrl() };
   const clock = new FixedClock(now);
-  const { http, container } = createApplication(env, prisma, { clock });
+  const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+    .overrideProvider(ENV)
+    .useValue(env)
+    .overrideProvider(CLOCK)
+    .useValue(clock)
+    .compile();
+  const app = moduleRef.createNestApplication<NestExpressApplication>({ logger: false });
+  configureApp(app, env);
+  await app.init();
+  const http = app.getHttpServer() as Server;
+  const prisma = app.get(PrismaClient);
 
   const tables = await prisma.$queryRaw<{ tablename: string }[]>`
     SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`;
   await prisma.$executeRawUnsafe(
     `TRUNCATE ${tables.map((table) => `"${table.tablename}"`).join(', ')} RESTART IDENTITY CASCADE`,
   );
-  await container.useCases.identity.ensureAdminUser.execute({ name: env.ADMIN_NAME, ...ADMIN });
+  await app.get(EnsureAdminUser).execute({ name: env.ADMIN_NAME, ...ADMIN });
 
   const login = async (email: string, password: string): Promise<string> => {
     const response = await request(http).post('/auth/login').send({ email, password });
@@ -80,7 +83,7 @@ export async function startTestApi(now = '2026-03-10T12:00:00Z'): Promise<TestAp
     return response.body;
   };
 
-  return { http, prisma, clock, adminToken, call, ok, login, close: () => prisma.$disconnect() };
+  return { http, prisma, clock, adminToken, call, ok, login, close: () => app.close() };
 }
 
 /** Cenário base criado pela própria API: corretor, proprietário, cliente e um imóvel para venda e locação. */

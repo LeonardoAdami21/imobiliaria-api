@@ -187,3 +187,26 @@ export class UserDirectoryService implements UserDirectory {
     return { id: user.id, name: user.name, role: user.role, creci: user.creci };
   }
 }
+
+// ───────────────────────────── Sessão ─────────────────────────────
+
+/** Usuário dono de um token válido: o papel vem sempre do banco, não do token. */
+export interface SessionUser {
+  id: string;
+  role: UserRole;
+}
+
+/** Um token só vale enquanto o usuário existir e estiver ativo. */
+export class VerifyAccessToken implements UseCase<{ token: string }, SessionUser | null> {
+  constructor(
+    private readonly tokens: TokenService,
+    private readonly users: UserDirectory,
+  ) {}
+
+  async execute({ token }: { token: string }): Promise<SessionUser | null> {
+    const payload = await this.tokens.verify(token);
+    if (!payload) return null;
+    const user = await this.users.findActiveUser(payload.userId);
+    return user && { id: user.id, role: user.role };
+  }
+}

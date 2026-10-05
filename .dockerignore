@@ -5,3 +5,4 @@ dist
 coverage
 src/generated
 *.log
+db-data
