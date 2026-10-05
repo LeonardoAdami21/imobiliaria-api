@@ -30,14 +30,14 @@ yarn install
 docker compose up -d db     # só o banco
 yarn db:deploy              # aplica as migrações
 yarn db:seed                # opcional: dados de demonstração (admin@demo.com.br / demo12345)
-yarn dev                    # API com reload em http://localhost:7000
+yarn start:dev              # API com reload em http://localhost:7000
 ```
 
 ### Scripts
 
 | Comando | O que faz |
 |---|---|
-| `yarn dev` | Compila em modo watch e reinicia a API a cada alteração |
+| `yarn start:dev` | Compila em modo watch e reinicia a API a cada alteração |
 | `yarn build` / `yarn start` | Gera `dist/main.js` e roda a versão compilada |
 | `yarn typecheck` | Checagem de tipos |
 | `yarn test` | Testes unitários e da camada HTTP (sem banco) |
@@ -46,7 +46,7 @@ yarn dev                    # API com reload em http://localhost:7000
 | `yarn db:deploy` | Aplica as migrações pendentes |
 | `yarn db:studio` | Abre o Prisma Studio |
 
-O build usa o tsup com SWC (e não o `nest build`): o SWC emite os metadados de tipo dos decorators, que o NestJS usa para validar os DTOs e montar o Swagger, e o tsup gera um único `dist/main.js` em ESM. Os testes rodam no Vitest com o mesmo SWC (`unplugin-swc`).
+O build usa o tsup com SWC (e não o `nest build`/`nest start`, que compilam arquivo por arquivo com o `tsc` e não funcionam com o TypeScript 7 nem com o bundle ESM deste projeto): o SWC emite os metadados de tipo dos decorators, que o NestJS usa para validar os DTOs e montar o Swagger, e o tsup gera um único `dist/main.js` em ESM. Os testes rodam no Vitest com o mesmo SWC (`unplugin-swc`).
 
 ## Arquitetura
 

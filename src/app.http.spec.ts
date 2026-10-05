@@ -58,6 +58,22 @@ describe('HTTP', () => {
     expect(docs.body.paths['/leads/{id}/status'].post.requestBody).toBeDefined();
     expect(docs.body.paths['/properties/{id}'].get.parameters[0]).toMatchObject({ name: 'id', in: 'path', required: true });
     expect(docs.body.paths['/properties'].get.parameters.map((p: { name: string }) => p.name)).toContain('minBedrooms');
+
+    // Exemplos legíveis no lugar do texto aleatório gerado a partir das regex do Zod.
+    expect(docs.body.components.schemas.LoginDto.properties).toMatchObject({
+      email: { example: 'admin@imobiliaria.com.br' },
+      password: { example: 'TroqueEstaSenha123' },
+    });
+    expect(docs.body.components.schemas.RegisterPersonDto.properties.email.example).toBe('nome@imobiliaria.com.br');
+    expect(docs.body.paths['/properties/{id}'].get.parameters[0].schema.example).toBe('3fa85f64-5717-4562-b3fc-2c963f66afa6');
+    const withoutExample: string[] = [];
+    (function walk(node: unknown): void {
+      if (!node || typeof node !== 'object') return;
+      const { format, example } = node as { format?: string; example?: unknown };
+      if (['email', 'uuid', 'date', 'date-time'].includes(format ?? '') && example === undefined) withoutExample.push(format!);
+      Object.values(node).forEach(walk);
+    })(docs.body);
+    expect(withoutExample).toEqual([]);
   });
 
   it('exige token, confere o papel antes de validar o corpo e responde no formato padrão', async () => {

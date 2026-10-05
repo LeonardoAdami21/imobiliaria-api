@@ -4067,7 +4067,7 @@ type-is@^2.0.1, type-is@^2.1.0:
 
 typescript@^7.0.2:
   version "7.0.2"
-  resolved "https://registry.npmjs.org/typescript/-/typescript-7.0.2.tgz"
+  resolved "https://registry.yarnpkg.com/typescript/-/typescript-7.0.2.tgz#9ec773d7954a8c182c17cc5bbd575aa28bc51582"
   integrity sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==
   optionalDependencies:
     "@typescript/typescript-aix-ppc64" "7.0.2"
